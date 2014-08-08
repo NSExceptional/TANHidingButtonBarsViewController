@@ -23,8 +23,11 @@ typedef enum ScrollDirection {
 @property (assign, nonatomic) BOOL barsHidden;
 @property (assign, nonatomic) BOOL vanishingBarsEnabled;
 
-- (void)hideBars;
-- (void)revealBars;
-- (void)animateBarsTo:(CGFloat)top and:(CGFloat)bottom isToggle:(BOOL)isToggle;
+- (void)hideBarsAnimated:(BOOL)animated;
+- (void)hideBarsAnimated:(BOOL)animated completion:(void (^)(BOOL))completion;
+- (void)revealBarsAnimated:(BOOL)animated;
+- (void)revealBarsAnimated:(BOOL)animated completion:(void (^)(BOOL))completion;
+
+- (void)moveBarsTo:(CGFloat)top and:(CGFloat)bottom animated:(BOOL)animated isToggle:(BOOL)isToggle completion:(void (^)(BOOL))completion;
 
 @end

@@ -36,6 +36,10 @@
 
 @implementation TANHidingButtonBarsViewController
 
+#pragma mark - Segues
+
+#pragma mark - Table View
+
 - (void)viewDidLoad
 {
     [super viewDidLoad];
@@ -44,11 +48,16 @@
     self.vanishingBarsEnabled = YES;
 }
 
+//- (void)viewDidDisappear:(BOOL)animated
+//{
+//    self.previousScrollViewYOffset = 0;
+//}
+
 - (BOOL)scrollViewShouldScrollToTop:(UIScrollView *)scrollView
 {
-    if (self.barsHidden)
+    if (self.barsHidden && self.vanishingBarsEnabled)
     {
-        [self revealBars];
+        [self revealBarsAnimated:YES];
         return NO;
     }
     
@@ -57,7 +66,7 @@
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath
 {
-    [self revealBars];
+    [self revealBarsAnimated:NO];
 
     TANHidingButtonBarsViewController *viewController = [self.storyboard instantiateViewControllerWithIdentifier:@"master"];
     [self.navigationController pushViewController:viewController animated:YES];
@@ -83,24 +92,22 @@
 
 - (void)scrollViewWillBeginDecelerating:(UIScrollView *)scrollView
 {
-    if (!self.vanishingBarsEnabled)
+    if (self.vanishingBarsEnabled)
     {
-        return;
-    }
-    
-    ScrollDirection scrollDirection;
-    if (self.previousScrollViewYOffset > scrollView.contentOffset.y)
-        scrollDirection = ScrollDirectionUp;
-    else if (self.previousScrollViewYOffset < scrollView.contentOffset.y)
-        scrollDirection = ScrollDirectionDown;
-    
-    self.previousScrollViewYOffset = scrollView.contentOffset.y;
-    
-    if (scrollDirection == ScrollDirectionUp)
-    {
-        self.barsHidden = NO;
+        ScrollDirection scrollDirection;
+        if (self.previousScrollViewYOffset > scrollView.contentOffset.y)
+            scrollDirection = ScrollDirectionUp;
+        else //if (self.previousScrollViewYOffset < scrollView.contentOffset.y)
+            scrollDirection = ScrollDirectionDown;
         
-        [self adjustBarPositionsInScrollView:scrollView];
+        self.previousScrollViewYOffset = scrollView.contentOffset.y;
+        
+        if (scrollDirection == ScrollDirectionUp)
+        {
+            self.barsHidden = NO;
+            
+            [self adjustBarPositionsInScrollView:scrollView];
+        }
     }
 }
 
@@ -109,48 +116,68 @@
 // hidden before being presented. We need to fix this!
 - (void)scrollViewDidScroll:(UIScrollView *)scrollView
 {
-    if (!self.vanishingBarsEnabled)
+    // scrollDirectionDown: content is moving up to reveal lower content
+    // scrollDirectionUp:   content is moving down to reveal higher content
+    if (self.vanishingBarsEnabled)
     {
-        return;
-    }
-    
-    ScrollDirection scrollDirection;
-    if (self.previousScrollViewYOffset > scrollView.contentOffset.y){
-        scrollDirection = ScrollDirectionUp;
-    }
-    else if (self.previousScrollViewYOffset < scrollView.contentOffset.y){
-        scrollDirection = ScrollDirectionDown;
-    }
-    
-    if (scrollDirection == ScrollDirectionDown)
-    {
-        [self adjustBarPositionsInScrollView:scrollView];
-    }
-    else if (scrollDirection == ScrollDirectionUp){
-        if (self.barsHidden == NO) {
+        ScrollDirection scrollDirection;
+        if (self.previousScrollViewYOffset > scrollView.contentOffset.y)
+        {
+            scrollDirection = ScrollDirectionUp;
+        }
+        else //if (self.previousScrollViewYOffset < scrollView.contentOffset.y)
+        {
+            scrollDirection = ScrollDirectionDown;
+        }
+        
+        if (scrollDirection == ScrollDirectionDown)
+        {
             [self adjustBarPositionsInScrollView:scrollView];
+        }
+        else if (scrollDirection == ScrollDirectionUp){
+            if (self.barsHidden == NO) {
+                [self adjustBarPositionsInScrollView:scrollView];
+            }
         }
     }
 }
 
 #pragma mark - Hiding bars
 
-- (void)hideBars
+- (void)hideBarsAnimated:(BOOL)animated
 {
-    if (self.barsHidden || !self.vanishingBarsEnabled)
-        return;
-
-    self.barsHidden = YES;
-    [self animateBarsTo:NAVBAR_ORIGIN_HIDDEN and:TOOLBAR_ORIGIN_HIDDEN isToggle:YES];
+    [self hideBarsAnimated:animated completion:nil];
 }
 
-- (void)revealBars
+- (void)hideBarsAnimated:(BOOL)animated completion:(void (^)(BOOL))completion
+{
+    if (self.barsHidden || !self.vanishingBarsEnabled)
+    {
+        if (completion)
+            completion(YES);
+        return;
+    }
+
+    self.barsHidden = YES;
+    [self moveBarsTo:NAVBAR_ORIGIN_HIDDEN and:TOOLBAR_ORIGIN_HIDDEN animated:animated isToggle:YES completion:completion];
+}
+
+- (void)revealBarsAnimated:(BOOL)animated
+{
+    [self revealBarsAnimated:YES completion:nil];
+}
+
+- (void)revealBarsAnimated:(BOOL)animated completion:(void (^)(BOOL))completion
 {
     if (!self.barsHidden || !self.vanishingBarsEnabled)
+    {
+        if (completion)
+            completion(YES);
         return;
+    }
     
     self.barsHidden = NO;
-    [self animateBarsTo:NAVBAR_ORIGIN_REVEALED and:TOOLBAR_ORIGIN_REVEALED isToggle:YES];
+    [self moveBarsTo:NAVBAR_ORIGIN_REVEALED and:TOOLBAR_ORIGIN_REVEALED animated:animated isToggle:YES completion:completion];
 }
 
 - (void)adjustBarPositionsInScrollView:(UIScrollView *)scrollView
@@ -199,7 +226,7 @@
         self.barsHidden = YES;
     }
     
-    // height based on whether the toolbar is visible or not ------------------v
+    // height based on whether the toolbar is visible or not
     tableViewFrame.origin.y = navFrame.origin.y + navFrame.size.height;
     tableViewFrame.size.height = (SHOWS_TOOLBAR ? SCREEN_HEIGHT : toolbarFrame.origin.y) - tableViewFrame.origin.y;
     
@@ -207,40 +234,47 @@
     [self.navigationController.toolbar setFrame:toolbarFrame];
     [self.tableView setFrame:tableViewFrame];
     [self fadeBarButtonItems:(1 - framePercentageHidden)];
-    [self setPreviousScrollViewYOffset:scrollOffset];
+    self.previousScrollViewYOffset = scrollOffset;
 }
 
 - (void)scrollViewDidEndDecelerating:(UIScrollView *)scrollView
 {
-    [self stoppedScrolling];
+    if (self.vanishingBarsEnabled)
+    {
+        [self stoppedScrolling];
+    }
 }
 
 - (void)scrollViewDidEndDragging:(UIScrollView *)scrollView willDecelerate:(BOOL)decelerate
 {
-    if (!decelerate) {
+    if (!decelerate && self.vanishingBarsEnabled)
+    {
         [self stoppedScrolling];
     }
 }
 
 - (void)stoppedScrolling
 {
-    if (NAVBAR_FRAME.origin.y < 0)
+    if (self.vanishingBarsEnabled)
     {
-        BOOL toggle = !self.barsHidden;
-        self.barsHidden = YES;
-        [self animateBarsTo:NAVBAR_ORIGIN_HIDDEN and:TOOLBAR_ORIGIN_HIDDEN isToggle:toggle];
-    }
-    else
-    {
-        BOOL toggle = self.barsHidden;
-        self.barsHidden = NO;
-        [self animateBarsTo:NAVBAR_ORIGIN_REVEALED and:TOOLBAR_ORIGIN_REVEALED isToggle:toggle];
+        if (NAVBAR_FRAME.origin.y < 0)
+        {
+            BOOL toggle = !self.barsHidden;
+            self.barsHidden = YES;
+            [self moveBarsTo:NAVBAR_ORIGIN_HIDDEN and:TOOLBAR_ORIGIN_HIDDEN animated:YES isToggle:toggle completion:nil];
+        }
+        else
+        {
+            BOOL toggle = self.barsHidden;
+            self.barsHidden = NO;
+            [self moveBarsTo:NAVBAR_ORIGIN_REVEALED and:TOOLBAR_ORIGIN_REVEALED animated:YES isToggle:toggle completion:nil];
+        }
     }
 }
 
-- (void)animateBarsTo:(CGFloat)top and:(CGFloat)bottom isToggle:(BOOL)isToggle
+- (void)moveBarsTo:(CGFloat)top and:(CGFloat)bottom animated:(BOOL)animated isToggle:(BOOL)isToggle completion:(void (^)(BOOL))completion
 {
-    [UIView animateWithDuration:0.2 animations:^
+    void (^moveBars)() = ^void()
     {
         CGRect navFrame = NAVBAR_FRAME;
         CGFloat navAlpha = (navFrame.origin.y > top ? 0 : 1);
@@ -257,14 +291,10 @@
         if (!self.barsHidden && isToggle)
         {
             CGPoint offset = self.tableView.contentOffset;
-            // This is supposed to be -= not =
-            // this if statement only executes when you tap
-            // the status bar to reveal the bars. Changing
-            // it to = makes it scroll to the top.
             offset.y -= navFrame.size.height - tableViewFrame.origin.y;
             [self.tableView setContentOffset:offset animated:YES];
         }
-         
+        
         if (self.barsHidden)
         {
             tableViewFrame.origin.y = TABLE_ORIGIN_BARS_HIDDEN;
@@ -277,7 +307,26 @@
         }
         
         [self.tableView setFrame:tableViewFrame];
-    }];
+    };
+    
+    if (animated)
+    {
+        if (completion)
+        {
+            [UIView animateWithDuration:0.15 animations:moveBars completion:completion];
+        }
+        else
+        {
+            [UIView animateWithDuration:0.15 animations:moveBars];
+        }
+    }
+    else
+    {
+        moveBars();
+        
+        if (completion)
+            completion(YES);
+    }
 }
 
 - (void)fadeBarButtonItems:(CGFloat)alpha
